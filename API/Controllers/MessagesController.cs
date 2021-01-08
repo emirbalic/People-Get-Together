@@ -14,15 +14,13 @@ namespace API.Controllers
     [Authorize]
     public class MessagesController : BaseApiController
     {
-        private readonly IUserRepository _userRepository;
-        private readonly IMessageRepository _messageRepository;
+        private readonly IUnitsOfWork _unitsOfWork;
+
         private readonly IMapper _mapper;
-        public MessagesController(IMapper mapper, IUserRepository userRepository,
-            IMessageRepository messageRepository)
+        public MessagesController(IMapper mapper, IUnitsOfWork unitsOfWork)
         {
+            _unitsOfWork = unitsOfWork;
             _mapper = mapper;
-            _messageRepository = messageRepository;
-            _userRepository = userRepository;
         }
 
         [HttpPost]
@@ -33,8 +31,8 @@ namespace API.Controllers
             if (username == createMessageDto.RecipientUsername.ToLower())
                 return BadRequest("You cannot send messages to yourself");
 
-            var sender = await _userRepository.GetUserByUsernameAsync(username);
-            var recipient = await _userRepository.GetUserByUsernameAsync(createMessageDto.RecipientUsername);
+            var sender = await _unitsOfWork.UserRepository.GetUserByUsernameAsync(username);
+            var recipient = await _unitsOfWork.UserRepository.GetUserByUsernameAsync(createMessageDto.RecipientUsername);
 
             if (recipient == null) return NotFound();
 
@@ -47,9 +45,9 @@ namespace API.Controllers
                 Content = createMessageDto.Content
             };
 
-            _messageRepository.AddMessage(message);
+            _unitsOfWork.MessageRepository.AddMessage(message);
 
-            if (await _messageRepository.SaveAllAsync()) return Ok(_mapper.Map<MessageDto>(message));
+            if (await _unitsOfWork.Complete()) return Ok(_mapper.Map<MessageDto>(message));
 
             return BadRequest("Failed to send message");
         }
@@ -59,7 +57,7 @@ namespace API.Controllers
         MessageParams messageParams)
         {
             messageParams.Username = User.GetUsername();
-            var messages = await _messageRepository.GetMessagesForUser(messageParams);
+            var messages = await _unitsOfWork.MessageRepository.GetMessagesForUser(messageParams);
 
             Response.AddPaginationHeader(messages.CurrentPage, messages.PageSize,
                 messages.TotalCount, messages.TotalPages);
@@ -67,32 +65,26 @@ namespace API.Controllers
             return messages;
         }
 
-        [HttpGet("thread/{username}")]
-        public async Task<ActionResult<IEnumerable<MessageDto>>> GetMessageThread(string username)
-        {
-            var currentUsername = User.GetUsername();
 
-            return Ok(await _messageRepository.GetMessageThread(currentUsername, username));
-        }
 
         [HttpDelete("{id}")]
         public async Task<ActionResult> DeleteMessage(int id)
         {
             var username = User.GetUsername();
 
-            var message = await _messageRepository.GetMessage(id);
+            var message = await _unitsOfWork.MessageRepository.GetMessage(id);
 
-            if (message.Sender.UserName != username && message.Recipient.UserName != username) 
+            if (message.Sender.UserName != username && message.Recipient.UserName != username)
                 return Unauthorized();
 
             if (message.Sender.UserName == username) message.SenderDeleted = true;
             if (message.Recipient.UserName == username) message.RecipientDeleted = true;
-            if (message.SenderDeleted && message.RecipientDeleted) 
-                _messageRepository.DeleteMessage(message);  
-            
-            if (await _messageRepository.SaveAllAsync()) return Ok();
+            if (message.SenderDeleted && message.RecipientDeleted)
+                _unitsOfWork.MessageRepository.DeleteMessage(message);
 
-            return BadRequest("Problem deleting the message"); 
+            if (await _unitsOfWork.Complete()) return Ok();
+
+            return BadRequest("Problem deleting the message");
         }
     }
 }

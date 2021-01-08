@@ -29,7 +29,7 @@ namespace API.Helpers
                 src.Sender.KnownAs))//;
                 .ForMember(dest => dest.RecipientKnownAs, opt => opt.MapFrom(src => 
                 src.Recipient.KnownAs));
-            CreateMap<DateTime, DateTime>().ConvertUsing(d => DateTime.SpecifyKind(d, DateTimeKind.Utc));
+            // CreateMap<DateTime, DateTime>().ConvertUsing(d => DateTime.SpecifyKind(d, DateTimeKind.Utc));
         }
     }
 }
